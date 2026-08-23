@@ -1,22 +1,27 @@
 from ledger.fakes import InMemoryLedgerStore
-from ledger.query import between, by_data_snapshot, by_model_version, by_prompt_version
+from ledger.query import between, by_actor, by_data_snapshot, by_model_version, by_prompt_version
 
 
 def _seeded_store():
     store = InMemoryLedgerStore()
     store.append(
         id="d0", timestamp="2026-08-23T10:00:00Z", model_version="mv1",
-        prompt_version="pv1", data_snapshot="ds1", input="q0", output="a0",
+        prompt_version="pv1", data_snapshot="ds1", input="q0", output="a0", actor="service:a",
     )
     store.append(
         id="d1", timestamp="2026-08-23T11:00:00Z", model_version="mv2",
-        prompt_version="pv1", data_snapshot="ds2", input="q1", output="a1",
+        prompt_version="pv1", data_snapshot="ds2", input="q1", output="a1", actor="service:b",
     )
     store.append(
         id="d2", timestamp="2026-08-23T12:00:00Z", model_version="mv1",
-        prompt_version="pv2", data_snapshot="ds1", input="q2", output="a2",
+        prompt_version="pv2", data_snapshot="ds1", input="q2", output="a2", actor="service:a",
     )
     return store
+
+
+def test_by_actor_filters_correctly():
+    records = _seeded_store().read_all()
+    assert [r.id for r in by_actor(records, "service:a")] == ["d0", "d2"]
 
 
 def test_by_prompt_version_filters_correctly():

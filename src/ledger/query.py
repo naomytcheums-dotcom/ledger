@@ -19,6 +19,10 @@ def by_data_snapshot(records, data_snapshot):
     return [r for r in records if r.data_snapshot == data_snapshot]
 
 
+def by_actor(records, actor):
+    return [r for r in records if r.actor == actor]
+
+
 def between(records, start_timestamp, end_timestamp):
     """Inclusive range over `timestamp` as plain string comparison --
     correct as long as timestamps are ISO 8601, the same assumption the

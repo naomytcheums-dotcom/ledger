@@ -12,7 +12,17 @@ Run: python demo.py
 import json
 from pathlib import Path
 
-from ledger import ChainIntegrityError, LedgerStore, data_snapshot, model_version, prompt_version, verify_chain
+from ledger import (
+    CheckpointMismatchError,
+    ChainIntegrityError,
+    LedgerStore,
+    create_checkpoint,
+    data_snapshot,
+    model_version,
+    prompt_version,
+    verify_chain,
+    verify_checkpoint,
+)
 
 LEDGER_PATH = Path(__file__).parent / "demo_ledger.jsonl"
 
@@ -67,6 +77,26 @@ def main():
         print("Chain still verified -- this should not happen.")
     except ChainIntegrityError as exc:
         print(f"Tampering caught: {exc}")
+
+    print("\n--- Now the case verify_chain alone can't catch: tampering the LAST record ---")
+    store2 = seed()
+    checkpoint = create_checkpoint(store2.read_all())
+    print(f"Checkpoint taken and stored externally: {checkpoint}")
+
+    lines = LEDGER_PATH.read_text(encoding="utf-8").splitlines()
+    tampered_last = json.loads(lines[-1])
+    tampered_last["output"] = "[a forged final answer]"
+    lines[-1] = json.dumps(tampered_last, sort_keys=True)
+    LEDGER_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    still_verifies = verify_chain(store2.read_all())
+    print(f"verify_chain() alone still reports True: {still_verifies} -- it genuinely can't see this.")
+
+    try:
+        verify_checkpoint(store2.read_all(), checkpoint)
+        print("Checkpoint still verified -- this should not happen.")
+    except CheckpointMismatchError as exc:
+        print(f"But verify_checkpoint() catches it: {exc}")
 
 
 if __name__ == "__main__":

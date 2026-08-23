@@ -15,7 +15,7 @@ class InMemoryLedgerStore:
             return GENESIS_HASH
         return self._records[-1].record_hash()
 
-    def append(self, id, timestamp, model_version, prompt_version, data_snapshot, input, output):
+    def append(self, id, timestamp, model_version, prompt_version, data_snapshot, input, output, actor=""):
         record = DecisionRecord(
             id=id,
             timestamp=timestamp,
@@ -25,6 +25,7 @@ class InMemoryLedgerStore:
             input=input,
             output=output,
             previous_hash=self._last_hash(),
+            actor=actor,
         )
         self._records.append(record)
         return record

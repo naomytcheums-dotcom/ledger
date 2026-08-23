@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ledger"
-version = "0.1.0"
+version = "0.2.0"
 description = "A tamper-evident audit trail for AI/agent decisions -- which model, which prompt, which data produced an output, hash-chained."
 readme = "README.md"
 license = { text = "MIT" }

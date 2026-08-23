@@ -39,3 +39,13 @@ def test_to_dict_from_dict_round_trip():
     restored = DecisionRecord.from_dict(record.to_dict())
     assert restored == record
     assert restored.record_hash() == record.record_hash()
+
+
+def test_actor_defaults_to_empty_string():
+    assert _make_record().actor == ""
+
+
+def test_record_hash_changes_when_actor_changes():
+    base = _make_record()
+    attributed = _make_record(actor="service:code-fix-agent")
+    assert base.record_hash() != attributed.record_hash()

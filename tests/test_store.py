@@ -47,3 +47,12 @@ def test_persists_across_store_instances(tmp_path):
     )
     reopened = LedgerStore(path)
     assert [r.id for r in reopened.read_all()] == ["d0"]
+
+
+def test_append_persists_actor(tmp_path):
+    store = LedgerStore(tmp_path / "ledger.jsonl")
+    store.append(
+        id="d0", timestamp="t0", model_version="mv", prompt_version="pv",
+        data_snapshot="ds", input="q", output="a", actor="service:rag-fastapi-assistant",
+    )
+    assert store.read_all()[0].actor == "service:rag-fastapi-assistant"

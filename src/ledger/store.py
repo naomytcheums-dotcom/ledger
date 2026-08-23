@@ -21,7 +21,7 @@ class LedgerStore:
             return GENESIS_HASH
         return records[-1].record_hash()
 
-    def append(self, id, timestamp, model_version, prompt_version, data_snapshot, input, output):
+    def append(self, id, timestamp, model_version, prompt_version, data_snapshot, input, output, actor=""):
         record = DecisionRecord(
             id=id,
             timestamp=timestamp,
@@ -31,6 +31,7 @@ class LedgerStore:
             input=input,
             output=output,
             previous_hash=self._last_hash(),
+            actor=actor,
         )
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(json.dumps(record.to_dict(), sort_keys=True) + "\n")

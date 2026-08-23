@@ -7,6 +7,10 @@
 A tamper-evident audit trail for AI/agent decisions — which model,
 which prompt, which input data produced a given output, hash-chained
 so altering or deleting a past record breaks every hash after it.
+`v0.2.0` adds checkpointing, HMAC signing, and retention enforcement —
+compliance-*support* primitives, not a certified compliance product
+(see [Known limitations](#known-limitations) for the honest line
+between the two).
 
 ## Where this came from
 
@@ -26,7 +30,7 @@ pip install ledger
 
 (Not yet published to PyPI — for now, install from source: `pip install -e .` after cloning.)
 
-## The six pieces
+## The nine pieces
 
 ### 1. Content-addressed versioning — "version 3" always means the same bytes
 
@@ -90,12 +94,45 @@ from ledger import InMemoryLedgerStore
 store = InMemoryLedgerStore()  # same append()/read_all() shape as LedgerStore, no file
 ```
 
+### 7. Checkpoint the chain externally — closes the "most recent record" gap
+
+```python
+from ledger import create_checkpoint, verify_checkpoint
+
+checkpoint = create_checkpoint(store.read_all())
+# store this SOMEWHERE ELSE -- a second system, a build log, a git commit -- not back in the same file
+
+verify_checkpoint(store.read_all(), checkpoint)  # raises CheckpointMismatchError if anything since changed
+```
+
+### 8. Sign a record — proves it was written by a holder of a given key
+
+```python
+from ledger import sign_record, verify_signature
+
+signature = sign_record(record, secret="per-service-secret")
+verify_signature(record, signature, secret="per-service-secret")  # False if the record or the key don't match
+```
+
+### 9. Enforce retention holds before deleting anything
+
+```python
+from ledger import RetentionHold, enforce_retention
+
+hold = RetentionHold(
+    id="fda-2026-audit", until="2031-01-01T00:00:00Z",
+    applies_to=lambda r: r.id.startswith("clinical-"), reason="regulatory retention",
+)
+enforce_retention(record, holds=[hold], current_timestamp=now)  # raises RetentionViolationError if blocked
+```
+
 ## The demo catches real tampering
 
-`demo.py` seeds a small ledger, verifies it, then edits one record's
+`demo.py` seeds a small ledger, verifies it, then edits a record's
 output directly in the file — not through the library's own API, the
-way a bug or a bad actor actually would — and shows `verify_chain()`
-catching it:
+way a bug or a bad actor actually would — twice: once mid-chain (which
+`verify_chain()` alone catches), once on the very last record (which it
+structurally can't, and `verify_checkpoint()` catches instead):
 
 ```bash
 python demo.py
@@ -106,27 +143,38 @@ Seeded 3 decisions to demo_ledger.jsonl
 Chain verified: every record's hash links correctly to the one before it.
 
 Tampering with the second record's output directly in the file (not through the library API)...
-Tampering caught: record 2 (id='decision-2') has previous_hash '4b1b0f07...', expected 'ed992e93...'
+Tampering caught: record 2 (id='decision-2') has previous_hash 'd1cb8f99...', expected 'cbb2dfa2...'
 -- a record before it was altered, inserted, or deleted
-```
 
-Notice the break is reported at record 2, not the tampered record 1 —
-that's not a bug. See Known limitations.
+--- Now the case verify_chain alone can't catch: tampering the LAST record ---
+Checkpoint taken and stored externally: {'record_count': 3, 'head_hash': 'd6264ba3...'}
+verify_chain() alone still reports True: True -- it genuinely can't see this.
+But verify_checkpoint() catches it: checkpoint recorded head_hash 'd6264ba3...' at record 3,
+but the ledger now computes '8384f705...' there -- tampering occurred after the checkpoint was taken
+```
 
 ## Known limitations
 
-- **Tampering with the most recent record, followed by normal appends, is not detectable.** `LedgerStore.append()`
-  always chains onto whatever the file currently contains. If the last record is edited and then more decisions
-  are appended normally, every new record happily chains onto the *tampered* content — `verify_chain()` never
-  breaks, because nothing outside the file remembers the original hash. This is tested explicitly
-  (`test_verify_chain_cannot_detect_tampering_in_the_most_recent_record`), not just claimed. Catching this case
-  needs an independent checkpoint of the last known-good hash taken *before* the tampering — publish it to a
-  second system, print it to a build log, anything outside the file itself. This library doesn't provide one.
-- **A break is reported at the record *after* the tampered one, not the tampered one itself.** A record's own
-  `previous_hash` field points backward and isn't affected by changes to its own content — only the hash it
-  produces going forward changes. Same reason a blockchain or a chain of git commits works this way.
-- **No encryption, no access control.** This is tamper-*evidence*, not tamper-*prevention* — anyone with file
-  access can still edit it, they just can't do so undetected (subject to the limitation above).
+- **A break from `verify_chain` is reported at the record *after* the tampered one, not the tampered one
+  itself.** A record's own `previous_hash` field points backward and isn't affected by changes to its own
+  content — only the hash it produces going forward changes. Same reason a blockchain or a chain of git commits
+  works this way.
+- **Checkpointing only helps if it's actually used.** `verify_checkpoint` closes the "tamper the most recent
+  record" gap *only* for records written before a checkpoint was taken and stored somewhere independent of the
+  ledger file. Nothing enforces that discipline — skip taking checkpoints, or store one next to the ledger file
+  it's meant to audit, and the gap reopens exactly as documented and tested in `test_verify_chain_cannot_detect_tampering_in_the_most_recent_record`.
+- **Signing proves a key, not a person.** `verify_signature` proves a record was produced by *someone holding
+  that secret* — it says nothing about which specific person or process that was unless you already run strict
+  one-key-per-actor discipline and protect key distribution separately. This library has no key management.
+- **Retention is advisory, not enforced by the storage layer.** `enforce_retention` raises if a hold applies —
+  but nothing stops a caller from deleting the underlying file directly and skipping the check entirely. It's a
+  policy gate for code that calls it, not a database-level guarantee.
+- **No encryption, no access control on the file itself.** This is tamper-*evidence*, not tamper-*prevention* —
+  anyone with file access can still edit it; the point is that they can't do so undetected, subject to the
+  limitations above.
+- **Not a certified compliance product.** These are real, tested primitives toward regulatory readiness — not a
+  replacement for organizational validation, documented procedures, or legal review, none of which a library can
+  provide by itself.
 
 ## Tests
 
@@ -134,7 +182,7 @@ that's not a bug. See Known limitations.
 pytest tests/ -v
 ```
 
-26 tests, all offline. Unlike the rest of this portfolio, nothing here needs a live LLM call to be fully
+47 tests, all offline. Unlike the rest of this portfolio, nothing here needs a live LLM call to be fully
 exercised — this library records and verifies metadata about a decision that already happened, so every module
 is tested end-to-end with no funded API key required.
 
@@ -147,8 +195,9 @@ altered afterward.
 
 ## Status
 
-Early (`v0.1.0`, alpha). All six modules are complete and tested, and the tamper-detection demo runs end-to-end.
-Not yet published to PyPI. Feedback and issues welcome.
+Early (`v0.2.0`, alpha). All nine modules are complete and tested, and the tamper-detection demo runs
+end-to-end for both the mid-chain and most-recent-record cases. Not yet published to PyPI. Feedback and issues
+welcome.
 
 ## License
 

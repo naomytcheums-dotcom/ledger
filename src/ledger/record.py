@@ -28,7 +28,9 @@ class DecisionRecord:
     than manually incremented numbers, so two records referencing "the
     same" prompt are provably referencing byte-identical text.
     `previous_hash` links this record to the one before it in the
-    ledger -- the chain that makes tampering detectable."""
+    ledger -- the chain that makes tampering detectable. `actor`
+    identifies who or what service triggered the decision -- optional,
+    defaults to "" for callers that don't need attribution."""
 
     id: str
     timestamp: str
@@ -38,6 +40,7 @@ class DecisionRecord:
     input: str
     output: str
     previous_hash: str
+    actor: str = ""
 
     def record_hash(self):
         """This record's own content hash, including `previous_hash` --
@@ -53,6 +56,7 @@ class DecisionRecord:
                 "input": self.input,
                 "output": self.output,
                 "previous_hash": self.previous_hash,
+                "actor": self.actor,
             }
         )
 
