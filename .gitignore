@@ -7,3 +7,4 @@ venv/
 build/
 dist/
 demo_ledger.jsonl
+demo_checkpoint.json

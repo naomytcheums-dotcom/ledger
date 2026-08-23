@@ -3,28 +3,74 @@ Browse and verify a ledger visually instead of via the CLI. Deliberately
 uncached: for a tamper-evidence viewer, showing a stale cached "verified"
 status while the underlying file changed would be actively misleading,
 so every rerun re-reads the file from disk.
+
+Demo data is seeded into a per-session temp directory on click, not a
+fixed path -- the same class of bug already caught and fixed in this
+portfolio's llm-observatory dashboard: a shared fixed path means every
+visitor on a multi-user deployment reads and writes the same file.
 """
 
+import tempfile
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-from ledger.checkpoint import CheckpointMismatchError, load_checkpoint, verify_checkpoint
+from ledger import LedgerStore, data_snapshot, model_version, prompt_version
+from ledger.checkpoint import CheckpointMismatchError, create_checkpoint, load_checkpoint, save_checkpoint, verify_checkpoint
 from ledger.query import between, by_actor, by_data_snapshot, by_model_version, by_prompt_version
 from ledger.replay import ChainIntegrityError, verify_chain
-from ledger.store import LedgerStore
 
 st.set_page_config(page_title="ledger", page_icon=":material/verified:", layout="wide")
 
-DEFAULT_LEDGER_PATH = str(Path(__file__).parent.parent / "demo_ledger.jsonl")
-
 st.title("ledger — audit trail viewer")
+
+
+def _seed_demo_ledger(path):
+    store = LedgerStore(path)
+    mv = model_version("claude-sonnet-5")
+    pv = prompt_version("Answer the user question, citing sources.")
+    snapshot = data_snapshot({"docs_version": "v1.2"})
+    questions = [
+        ("How do I add a path parameter?", "service:rag-fastapi-assistant"),
+        ("Does the framework support server-sent events?", "service:rag-fastapi-assistant"),
+        ("What is the difference between Depends and Security?", "service:rag-fastapi-assistant"),
+        ("Summarize the incident from last night.", "service:llm-observatory"),
+    ]
+    for i, (question, actor) in enumerate(questions):
+        store.append(
+            id=f"decision-{i}",
+            timestamp=f"2026-08-23T10:0{i}:00Z",
+            model_version=mv,
+            prompt_version=pv,
+            data_snapshot=snapshot,
+            input=question,
+            output=f"[answer to: {question}]",
+            actor=actor,
+        )
+    return store
+
+
+if "ledger_session_dir" not in st.session_state:
+    st.session_state.ledger_session_dir = tempfile.mkdtemp()
 
 with st.sidebar:
     st.subheader("Ledger")
-    ledger_path = st.text_input("Path to .jsonl ledger file", value=DEFAULT_LEDGER_PATH)
-    checkpoint_path = st.text_input("Path to a checkpoint .json file (optional)", value="")
+    if st.button("Load demo data", icon=":material/dataset:"):
+        session_dir = Path(st.session_state.ledger_session_dir)
+        demo_ledger_path = session_dir / "demo_ledger.jsonl"
+        demo_checkpoint_path = session_dir / "demo_checkpoint.json"
+
+        store = _seed_demo_ledger(demo_ledger_path)
+        save_checkpoint(demo_checkpoint_path, create_checkpoint(store.read_all()))
+
+        st.session_state.ledger_path_value = str(demo_ledger_path)
+        st.session_state.checkpoint_path_value = str(demo_checkpoint_path)
+
+    ledger_path = st.text_input("Path to .jsonl ledger file", value=st.session_state.get("ledger_path_value", ""))
+    checkpoint_path = st.text_input(
+        "Path to a checkpoint .json file (optional)", value=st.session_state.get("checkpoint_path_value", "")
+    )
 
     st.subheader("Filters")
     actor_filter = st.text_input("Actor")
@@ -34,8 +80,12 @@ with st.sidebar:
     since = st.text_input("Since (ISO 8601)", value="")
     until = st.text_input("Until (ISO 8601)", value="")
 
+if not ledger_path:
+    st.info("Click **Load demo data** in the sidebar, or enter the path to your own .jsonl ledger file.")
+    st.stop()
+
 if not Path(ledger_path).exists():
-    st.info("Enter the path to a ledger .jsonl file in the sidebar to get started.")
+    st.warning(f"No file found at {ledger_path}.")
     st.stop()
 
 records = LedgerStore(ledger_path).read_all()
