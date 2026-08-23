@@ -8,6 +8,8 @@ anchor.
 
 import json
 
+from ledger.merkle import merkle_proof, merkle_root, verify_merkle_proof
+
 
 class CheckpointMismatchError(ValueError):
     """Raised by `verify_checkpoint` -- proof that something in the
@@ -56,3 +58,30 @@ def save_checkpoint(path, checkpoint):
 def load_checkpoint(path):
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def create_merkle_checkpoint(records):
+    """Like `create_checkpoint`, but commits to every record's hash via
+    a Merkle root instead of just the chain head. The point isn't
+    stronger tamper-evidence than the plain checkpoint -- it's that a
+    verifier can later check *one* record's inclusion (see
+    `verify_record_inclusion`) without needing the rest of the ledger
+    at all, which the plain checkpoint can't offer."""
+    leaf_hashes = [r.record_hash() for r in records]
+    return {"record_count": len(records), "merkle_root": merkle_root(leaf_hashes)}
+
+
+def record_inclusion_proof(records, index):
+    """The Merkle proof for `records[index]` against
+    `create_merkle_checkpoint(records)`'s root. Computed here (with the
+    full ledger available) so it can be handed to a verifier who has
+    only the one record and this proof -- not the rest of the ledger."""
+    leaf_hashes = [r.record_hash() for r in records]
+    return merkle_proof(leaf_hashes, index)
+
+
+def verify_record_inclusion(record, proof, merkle_checkpoint):
+    """True iff `record` is proven included in the tree committed to
+    by `merkle_checkpoint["merkle_root"]`, using only `record` and
+    `proof` -- no other records needed."""
+    return verify_merkle_proof(record.record_hash(), proof, merkle_checkpoint["merkle_root"])

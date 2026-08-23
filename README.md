@@ -7,10 +7,13 @@
 A tamper-evident audit trail for AI/agent decisions — which model,
 which prompt, which input data produced a given output, hash-chained
 so altering or deleting a past record breaks every hash after it.
-`v0.2.0` adds checkpointing, HMAC signing, and retention enforcement —
-compliance-*support* primitives, not a certified compliance product
+Compliance-*support* primitives, not a certified compliance product
 (see [Known limitations](#known-limitations) for the honest line
 between the two).
+
+`v0.3.0` adds a CLI, Merkle-tree checkpoints (verify one record's
+inclusion without reading the whole ledger), public-key signing, and a
+Streamlit dashboard for browsing a ledger visually.
 
 ## Where this came from
 
@@ -29,8 +32,10 @@ pip install ledger
 ```
 
 (Not yet published to PyPI — for now, install from source: `pip install -e .` after cloning.)
+Optional extras: `pip install ledger[pki]` for public-key signing, `pip install ledger[dashboard]` for the
+Streamlit viewer.
 
-## The nine pieces
+## The thirteen pieces
 
 ### 1. Content-addressed versioning — "version 3" always means the same bytes
 
@@ -126,6 +131,53 @@ hold = RetentionHold(
 enforce_retention(record, holds=[hold], current_timestamp=now)  # raises RetentionViolationError if blocked
 ```
 
+### 10. Verify the chain, a checkpoint, or run a query without writing Python
+
+```bash
+ledger verify decisions.jsonl
+ledger checkpoint create decisions.jsonl checkpoint.json
+ledger checkpoint verify decisions.jsonl checkpoint.json
+ledger query decisions.jsonl --actor "service:rag-fastapi-assistant" --since 2026-08-01T00:00:00Z
+```
+
+### 11. Prove one record's inclusion without reading the whole ledger
+
+A plain checkpoint (piece 7) proves the *whole chain* up to a point is
+what it was — checking it still needs every record. A Merkle checkpoint
+lets a verifier check *one* record with only a small proof:
+
+```python
+from ledger import checkpoint  # create_merkle_checkpoint, record_inclusion_proof, verify_record_inclusion
+
+records = store.read_all()
+mc = checkpoint.create_merkle_checkpoint(records)          # {"record_count", "merkle_root"} -- publish this
+proof = checkpoint.record_inclusion_proof(records, index=42)  # hand this + the one record to a verifier
+
+# the verifier needs only `records[42]`, `proof`, and `mc` -- not the other 10,000 records
+checkpoint.verify_record_inclusion(records[42], proof, mc)  # True
+```
+
+### 12. Sign with a real keypair instead of a shared secret
+
+```python
+from ledger.pki import generate_keypair, sign_record, verify_signature  # needs: pip install ledger[pki]
+
+private_key, public_key = generate_keypair()  # one keypair per actor -- private key never leaves them
+signature = sign_record(record, private_key)
+verify_signature(record, signature, public_key)  # anyone with the public key can check this, nobody can forge it
+```
+
+### 13. Browse and verify a ledger visually
+
+```bash
+pip install ledger[dashboard]
+streamlit run dashboard/app.py
+```
+
+Shows record count, chain status, distinct actors/prompt versions, an optional checkpoint check, and a
+filterable table — deliberately uncached, since a stale "verified" status in a tamper-evidence viewer would be
+actively misleading.
+
 ## The demo catches real tampering
 
 `demo.py` seeds a small ledger, verifies it, then edits a record's
@@ -175,6 +227,12 @@ but the ledger now computes '8384f705...' there -- tampering occurred after the 
 - **Not a certified compliance product.** These are real, tested primitives toward regulatory readiness — not a
   replacement for organizational validation, documented procedures, or legal review, none of which a library can
   provide by itself.
+- **PKI signing still proves a keypair, not a person, without your own key-issuance process.** `ledger.pki` gets
+  you real per-actor identity *if* you issue one keypair per actor and protect private key distribution — it
+  doesn't do that issuance for you.
+- **The Merkle checkpoint (piece 11) needs the full record list to *produce* a proof, only to *verify* one.**
+  Generating `record_inclusion_proof` still requires every record's hash at checkpoint time; the savings are on
+  the verifier's side, who afterward needs only the one record and its proof.
 
 ## Tests
 
@@ -182,9 +240,10 @@ but the ledger now computes '8384f705...' there -- tampering occurred after the 
 pytest tests/ -v
 ```
 
-47 tests, all offline. Unlike the rest of this portfolio, nothing here needs a live LLM call to be fully
+78 tests, all offline. Unlike the rest of this portfolio, nothing here needs a live LLM call to be fully
 exercised — this library records and verifies metadata about a decision that already happened, so every module
-is tested end-to-end with no funded API key required.
+is tested end-to-end with no funded API key required. `pki` tests need the optional `cryptography` dependency
+(`pip install ledger[dev,pki]`); CI installs it.
 
 ## Where this fits in the portfolio
 
@@ -195,8 +254,9 @@ altered afterward.
 
 ## Status
 
-Early (`v0.2.0`, alpha). All nine modules are complete and tested, and the tamper-detection demo runs
-end-to-end for both the mid-chain and most-recent-record cases. Not yet published to PyPI. Feedback and issues
+Early (`v0.3.0`, alpha). All thirteen pieces are complete and tested, the tamper-detection demo runs end-to-end
+for both the mid-chain and most-recent-record cases, the CLI is installed and smoke-tested as a real entry
+point, and the dashboard has been run and verified in a browser. Not yet published to PyPI. Feedback and issues
 welcome.
 
 ## License

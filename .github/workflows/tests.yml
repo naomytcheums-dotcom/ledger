@@ -19,8 +19,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install (editable, with dev extras)
-        run: pip install -e ".[dev]"
+      - name: Install (editable, with dev + pki extras)
+        run: pip install -e ".[dev,pki]"
 
       - name: Run tests
         run: pytest tests/ -v

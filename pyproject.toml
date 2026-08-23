@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ledger"
-version = "0.2.0"
+version = "0.3.0"
 description = "A tamper-evident audit trail for AI/agent decisions -- which model, which prompt, which data produced an output, hash-chained."
 readme = "README.md"
 license = { text = "MIT" }
@@ -21,6 +21,11 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest==9.1.1"]
+pki = ["cryptography>=42"]
+dashboard = ["streamlit>=1.30"]
+
+[project.scripts]
+ledger = "ledger.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/naomytcheums-dotcom/ledger"

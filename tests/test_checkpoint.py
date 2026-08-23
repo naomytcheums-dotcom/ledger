@@ -2,7 +2,16 @@ import json
 
 import pytest
 
-from ledger.checkpoint import CheckpointMismatchError, create_checkpoint, load_checkpoint, save_checkpoint, verify_checkpoint
+from ledger.checkpoint import (
+    CheckpointMismatchError,
+    create_checkpoint,
+    create_merkle_checkpoint,
+    load_checkpoint,
+    record_inclusion_proof,
+    save_checkpoint,
+    verify_checkpoint,
+    verify_record_inclusion,
+)
 from ledger.store import LedgerStore
 
 
@@ -65,3 +74,40 @@ def test_checkpoint_round_trips_through_a_file(tmp_path):
     loaded = load_checkpoint(checkpoint_path)
 
     assert loaded == checkpoint
+
+
+def test_verify_record_inclusion_true_for_a_real_member(tmp_path):
+    store = _seeded_store(tmp_path / "ledger.jsonl")
+    records = store.read_all()
+    checkpoint = create_merkle_checkpoint(records)
+
+    proof = record_inclusion_proof(records, 1)
+
+    assert verify_record_inclusion(records[1], proof, checkpoint) is True
+
+
+def test_verify_record_inclusion_false_for_a_tampered_record(tmp_path):
+    store = _seeded_store(tmp_path / "ledger.jsonl")
+    records = store.read_all()
+    checkpoint = create_merkle_checkpoint(records)
+    proof = record_inclusion_proof(records, 1)
+
+    from dataclasses import replace
+
+    forged = replace(records[1], output="a forged answer")
+
+    assert verify_record_inclusion(forged, proof, checkpoint) is False
+
+
+def test_record_inclusion_does_not_require_the_rest_of_the_ledger(tmp_path):
+    """The whole point of the Merkle checkpoint: verifying one record
+    needs only that record and its proof, not every other record."""
+    store = _seeded_store(tmp_path / "ledger.jsonl")
+    records = store.read_all()
+    checkpoint = create_merkle_checkpoint(records)
+    proof = record_inclusion_proof(records, 2)
+    the_one_record = records[2]
+
+    del records  # simulate the verifier never having had the rest of the ledger
+
+    assert verify_record_inclusion(the_one_record, proof, checkpoint) is True
