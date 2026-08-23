@@ -139,18 +139,26 @@ if since or until:
 
 with st.container(border=True):
     st.subheader(f"Decisions ({len(filtered)} of {len(records)})")
+    st.caption("Full model/prompt version hashes shown below -- copy one straight into a filter above to test it.")
     table = pd.DataFrame(
         [
             {
                 "id": r.id,
                 "timestamp": r.timestamp,
                 "actor": r.actor or "-",
-                "model_version": r.model_version[:12] + "...",
-                "prompt_version": r.prompt_version[:12] + "...",
+                "model_version": r.model_version,
+                "prompt_version": r.prompt_version,
                 "input": r.input,
                 "output": r.output,
             }
             for r in filtered
         ]
     )
-    st.dataframe(table, hide_index=True)
+    st.dataframe(
+        table,
+        hide_index=True,
+        column_config={
+            "model_version": st.column_config.TextColumn(width="medium"),
+            "prompt_version": st.column_config.TextColumn(width="medium"),
+        },
+    )
