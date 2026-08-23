@@ -4,6 +4,8 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+**[Live dashboard →](https://ledger-ijwocha8temkjeq7unuxuh.streamlit.app/)** — click "Load demo data" in the sidebar, no setup required.
+
 A tamper-evident audit trail for AI/agent decisions — which model,
 which prompt, which input data produced a given output, hash-chained
 so altering or deleting a past record breaks every hash after it.
@@ -168,6 +170,8 @@ verify_signature(record, signature, public_key)  # anyone with the public key ca
 ```
 
 ### 13. Browse and verify a ledger visually
+
+**[Try it live →](https://ledger-ijwocha8temkjeq7unuxuh.streamlit.app/)** (deployed on Streamlit Community Cloud) or run it yourself:
 
 ```bash
 pip install ledger[dashboard]
