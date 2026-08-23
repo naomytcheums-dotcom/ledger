@@ -61,6 +61,9 @@ with st.sidebar:
         demo_ledger_path = session_dir / "demo_ledger.jsonl"
         demo_checkpoint_path = session_dir / "demo_checkpoint.json"
 
+        if demo_ledger_path.exists():
+            demo_ledger_path.unlink()  # reset to a clean 4-record demo, not append onto a previous click
+
         store = _seed_demo_ledger(demo_ledger_path)
         save_checkpoint(demo_checkpoint_path, create_checkpoint(store.read_all()))
 
